@@ -30,8 +30,8 @@ from beaker import (
 )
 from pydantic import BaseModel
 
-# Each worker peaks near 142 MB; the first baseline queued ~12 minutes behind a limit of 8.
-CONCURRENT_CASE_LIMIT = 24
+# Workers peak near 142 MB; 50 starts a whole split at once (baseline queued behind 8).
+CONCURRENT_CASE_LIMIT = 50
 CASE_TIMEOUT_SECONDS = 1800
 MAX_STDERR_ARTIFACT_CHARS = 20_000
 DEFAULT_AGENT_BASE_URL = "https://api.openai.com/v1"

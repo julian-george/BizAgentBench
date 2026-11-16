@@ -31,8 +31,8 @@ from beaker import (
 )
 from pydantic import BaseModel
 
-# Workers peak near 142 MB; 50 starts a whole split at once (baseline queued behind 8).
-CONCURRENT_CASE_LIMIT = 50
+# At 50 at once 37 of 38 baseline workers were SIGKILLed (out of memory) in the shared sandbox.
+CONCURRENT_CASE_LIMIT = 12
 # The benchmark's 5400s episode limit plus time to start and read the episode back.
 CASE_TIMEOUT_SECONDS = 5700
 MAX_STDERR_ARTIFACT_CHARS = 20_000

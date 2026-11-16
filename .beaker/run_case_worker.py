@@ -77,9 +77,13 @@ def read_episode(folder: Path) -> dict:
 
 
 def run_case(case_input: dict) -> dict:
+    from loguru import logger
     from payment.runtime.interaction.domain import register
     from tools.evaluate import run_case as run_benchmark_case
 
+    # tau2 logs every message at DEBUG; the parent buffers that stderr for all concurrent cases.
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
     register()
     config = {
         "seed": 0,

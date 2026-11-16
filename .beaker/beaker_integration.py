@@ -123,12 +123,12 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
     if process.returncode:
         hint = " (SIGKILL: likely out of memory)" if process.returncode == -9 else ""
         raise RuntimeError(
-            f"Case worker failed (returncode={process.returncode}{hint}) {timings}\n{error_text[-4000:]}"
+            f"Case worker failed (returncode={process.returncode}{hint}): {error_text[-4000:]}\n{timings}"
         )
     outcome = json.loads(stdout.decode().strip().splitlines()[-1])
     trace_outcome(runtime, outcome, timings)
     if "error" in outcome:
-        raise RuntimeError(f"Case failed {timings}\n{outcome['error']}")
+        raise RuntimeError(f"Case failed: {outcome['error']}\n{timings}")
     return CaseResult(
         output={
             "timings": {**timings, **model_call_statistics(outcome["model_calls"])},

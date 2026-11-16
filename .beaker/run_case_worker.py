@@ -83,6 +83,8 @@ def run_case(case_input: dict) -> dict:
     with tempfile.TemporaryDirectory() as output_directory:
         result = run_benchmark_case(case_input["task_id"], config, Path(output_directory))
         verification = result["verification"]
+        if result["classification"] in ("infrastructure_invalid", "simulator_protocol_error"):
+            raise RuntimeError(f"{result['classification']}: {result.get('error_class')}: {result.get('error')}")
         if "checks" not in verification:
             raise RuntimeError(f"Verifier failed: {result.get('classification')} {verification.get('error')}")
         episode = read_episode(Path(output_directory) / f"{case_input['task_id']}__trial0")
@@ -111,7 +113,9 @@ def main() -> None:
     try:
         outcome = run_case(json.loads(sys.argv[1]))
     except Exception:
-        outcome = {"error": traceback.format_exc()[-4000:]}
+        details = traceback.format_exc()
+        # The last line names the exception; Beaker shortens long messages, so it goes first.
+        outcome = {"error": f"{details.strip().splitlines()[-1]}\n{details[-4000:]}"}
     print(json.dumps(outcome))
 
 

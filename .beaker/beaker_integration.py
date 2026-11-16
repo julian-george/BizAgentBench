@@ -30,8 +30,8 @@ from beaker import (
 )
 from pydantic import BaseModel
 
-# Several simultaneous interpreters, each holding a full world, can exhaust sandbox memory.
-CONCURRENT_CASE_LIMIT = 8
+# Each worker peaks near 142 MB; the first baseline queued ~12 minutes behind a limit of 8.
+CONCURRENT_CASE_LIMIT = 24
 CASE_TIMEOUT_SECONDS = 1800
 MAX_STDERR_ARTIFACT_CHARS = 20_000
 DEFAULT_AGENT_BASE_URL = "https://api.openai.com/v1"
@@ -111,8 +111,9 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
     if timed_out:
         raise RuntimeError(f"Case timed out after {CASE_TIMEOUT_SECONDS}s {timings}")
     if process.returncode:
+        hint = " (SIGKILL: likely out of memory)" if process.returncode == -9 else ""
         raise RuntimeError(
-            f"Case worker failed (returncode={process.returncode}) {timings}\n{error_text[-4000:]}"
+            f"Case worker failed (returncode={process.returncode}{hint}) {timings}\n{error_text[-4000:]}"
         )
     outcome = json.loads(stdout)
     trace_outcome(runtime, outcome, timings)
@@ -120,6 +121,7 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
         raise RuntimeError(f"Case failed {timings}\n{outcome['error']}")
     return CaseResult(
         output={
+            "timings": {**timings, **model_call_statistics(outcome["model_calls"])},
             "checks": outcome["checks"],
             "strict_success": outcome["strict_success"],
             "agent_tool_calls": [
@@ -130,6 +132,18 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
         },
         output_kind="record",
     )
+
+
+def model_call_statistics(model_calls: list[dict]) -> dict:
+    """Where a case's time went, kept in the case record so slow cases are visible without traces."""
+    seconds = [call["wall_seconds"] for call in model_calls]
+    return {
+        "model_calls": len(model_calls),
+        "model_seconds": round(sum(seconds), 1),
+        "slowest_model_call_seconds": round(max(seconds, default=0), 1),
+        "retried_model_calls": sum(call["attempt"] > 1 for call in model_calls),
+        "input_tokens": sum(call["usage"].get("prompt_tokens") or 0 for call in model_calls),
+    }
 
 
 def trace_outcome(runtime: RolloutRuntime, outcome: dict, timings: dict) -> None:

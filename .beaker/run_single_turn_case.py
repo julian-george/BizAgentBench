@@ -70,6 +70,12 @@ def request_chat_completion(messages: list[dict], tool_schemas: list[dict]) -> d
             "attempt": attempt,
         }
     )
+    print(
+        f"model_call {len(model_calls)}: {model_calls[-1]['wall_seconds']}s attempt={attempt} "
+        f"tool_calls={len(message.get('tool_calls') or [])}",
+        file=sys.stderr,
+        flush=True,
+    )
     return message
 
 

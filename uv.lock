@@ -177,7 +177,7 @@ requires-dist = [
     { name = "docstring-parser", specifier = ">=0.16" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.24" },
     { name = "jsonschema", specifier = ">=4.20" },
-    { name = "litellm", specifier = ">=1.80.15,<1.82.7" },
+    { name = "litellm", specifier = ">=1.80.15" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markdown-it-py", specifier = ">=3,<5" },
     { name = "numpy", specifier = ">=1.24.0" },

@@ -1,8 +1,8 @@
-"""Optimize the BizAgentBench payment-support agent on single-turn cases.
+"""Optimize the BizAgentBench payment-support agent on the benchmark's own episodes.
 
-Each case is one scripted customer message. The score is the share of the
-verifier checks that fail on the untouched world and pass after the agent works,
-minus any check that passed at the start and fails afterwards.
+Each case is a full customer conversation, run with the benchmark's LLM customer.
+The score is the share of the verifier checks that fail on the untouched world and
+pass after the agent works, minus any check that passed at the start and fails afterwards.
 """
 
 from __future__ import annotations
@@ -27,12 +27,14 @@ from beaker import (
     SetupRuntime,
     inference_target,
     repository,
+    scoring_inference_target,
 )
 from pydantic import BaseModel
 
 # Workers peak near 142 MB; 50 starts a whole split at once (baseline queued behind 8).
 CONCURRENT_CASE_LIMIT = 50
-CASE_TIMEOUT_SECONDS = 1800
+# The benchmark's 5400s episode limit plus time to start and read the episode back.
+CASE_TIMEOUT_SECONDS = 5700
 MAX_STDERR_ARTIFACT_CHARS = 20_000
 DEFAULT_AGENT_BASE_URL = "https://api.openai.com/v1"
 # Only the documents the agent reads; the simulated bank, contracts and verifier stay fixed.
@@ -70,10 +72,18 @@ def agent_model_environment(runtime: RolloutRuntime) -> dict[str, str]:
     }
 
 
+def customer_model_environment() -> dict[str, str]:
+    """Route the LLM customer through Beaker's gateway as the integration's scorer model."""
+    target = scoring_inference_target()
+    if target is None:
+        return {}
+    return {"USER_BASE_URL": target.base_url, "USER_API_KEY": target.api_key, "USER_MODEL_ID": target.model}
+
+
 async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseResult:
     if not isinstance(case_input, dict):
         raise ValueError("Expected a BizAgentBench case input object")
-    worker_path = Path(__file__).with_name("run_single_turn_case.py")
+    worker_path = Path(__file__).with_name("run_case_worker.py")
     queued_at = time.monotonic()
     async with concurrent_case_limit:
         started_at = time.monotonic()
@@ -82,7 +92,7 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
             sys.executable,
             str(worker_path),
             json.dumps(case_input),
-            env={**os.environ, **agent_model_environment(runtime)},
+            env={**os.environ, **agent_model_environment(runtime), **customer_model_environment()},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -115,23 +125,24 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
         raise RuntimeError(
             f"Case worker failed (returncode={process.returncode}{hint}) {timings}\n{error_text[-4000:]}"
         )
-    outcome = json.loads(stdout)
+    outcome = json.loads(stdout.decode().strip().splitlines()[-1])
     trace_outcome(runtime, outcome, timings)
     if "error" in outcome:
         raise RuntimeError(f"Case failed {timings}\n{outcome['error']}")
     return CaseResult(
         output={
             "timings": {**timings, **model_call_statistics(outcome["model_calls"])},
-            "conversation_stats": outcome["conversation_stats"],
+            "episode_stats": outcome["episode_stats"],
             "checks": outcome["checks"],
             "goal_success": outcome["goal_success"],
             "process_success": outcome["process_success"],
             "protection_success": outcome["protection_success"],
             "strict_success": outcome["strict_success"],
             "agent_tool_calls": [
-                call["function"]["name"]
+                call["name"]
                 for message in outcome["conversation"]
                 for call in message.get("tool_calls") or []
+                if call["requestor"] == "assistant"
             ],
         },
         output_kind="record",
@@ -145,7 +156,6 @@ def model_call_statistics(model_calls: list[dict]) -> dict:
         "model_calls": len(model_calls),
         "model_seconds": round(sum(seconds), 1),
         "slowest_model_call_seconds": round(max(seconds, default=0), 1),
-        "retried_model_calls": sum(call["attempt"] > 1 for call in model_calls),
         "input_tokens": sum(call["usage"].get("prompt_tokens") or 0 for call in model_calls),
     }
 
@@ -161,29 +171,22 @@ def trace_outcome(runtime: RolloutRuntime, outcome: dict, timings: dict) -> None
         for call in outcome.get("model_calls", []):
             with trace.model_call(
                 operation=call["call_name"],
-                provider="openai",
+                provider=call["model"].partition(":")[0] if ":" in call["model"] else "openai",
                 model=call["model"],
                 input_messages=call["input_messages"],
             ) as span:
                 span.attribute("wall_seconds", call["wall_seconds"])
-                span.attribute("attempt", call["attempt"])
                 span.output(call["output"])
                 usage = call["usage"]
                 span.usage(
                     input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens")
                 )
         tool_results = {
-            message["tool_call_id"]: message["content"]
-            for message in conversation
-            if message["role"] == "tool"
+            message["id"]: message["content"] for message in conversation if message["role"] == "tool"
         }
         for message in conversation:
             for call in message.get("tool_calls") or []:
-                with trace.tool_call(
-                    call["function"]["name"],
-                    arguments=json.loads(call["function"]["arguments"] or "{}"),
-                    call_id=call["id"],
-                ) as span:
+                with trace.tool_call(call["name"], arguments=call["arguments"], call_id=call["id"]) as span:
                     span.output(tool_results.get(call["id"]))
 
 

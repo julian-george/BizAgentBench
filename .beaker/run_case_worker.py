@@ -39,7 +39,8 @@ def role_config(
         "model": os.environ.get(f"{role_prefix}_MODEL_ID", default_model),
         "max_tokens": max_tokens,
         "timeout_seconds": MODEL_REQUEST_TIMEOUT_SECONDS,
-        "trust_env": False,
+        # The sandbox proxy's CA is only trusted through SSL_CERT_FILE, which httpx reads with trust_env.
+        "trust_env": True,
         "extra_body": {},
         "send_seed": False,
         "temperature": None,

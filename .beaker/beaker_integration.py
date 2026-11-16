@@ -122,7 +122,11 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
     return CaseResult(
         output={
             "timings": {**timings, **model_call_statistics(outcome["model_calls"])},
+            "conversation_stats": outcome["conversation_stats"],
             "checks": outcome["checks"],
+            "goal_success": outcome["goal_success"],
+            "process_success": outcome["process_success"],
+            "protection_success": outcome["protection_success"],
             "strict_success": outcome["strict_success"],
             "agent_tool_calls": [
                 call["function"]["name"]
@@ -213,6 +217,8 @@ async def score_case(*, case: Case, result: CaseResult, case_files_dir: Path) ->
         field_scores={
             "goal_progress": goal_progress,
             "kept_passing": 1 - len(regressed) / len(passing_at_start) if passing_at_start else 1.0,
+            "process_success": float(outcome["process_success"]),
+            "protection_success": float(outcome["protection_success"]),
             "strict_success": float(outcome["strict_success"]),
         },
         checks=tuple(checks),

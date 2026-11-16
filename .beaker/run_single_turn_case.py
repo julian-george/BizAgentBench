@@ -31,11 +31,20 @@ AGENT_SYSTEM_PROMPT_INTRO = (
     "You are the customer-support agent. In each turn either speak naturally in English "
     "to the customer or call tools. Do not wrap customer-facing text in JSON.\n\n"
 )
+AGENT_ASKS_FOR_UPLOAD = re.compile(r"\bupload", re.IGNORECASE)
 AGENT_ASKS_TO_WAIT = re.compile(r"\b(wait|advance|next (bank )?(event|update))\b", re.IGNORECASE)
 CUSTOMER_APPROVAL_MESSAGE = "I have approved the pending request(s) in my portal. Please continue."
 CUSTOMER_WAIT_MESSAGE = "I pressed the update button in my portal. Please continue."
 
 model_calls: list[dict] = []
+# Why the conversation ended and what the scripted customer did, for diagnosing low scores.
+conversation_stats = {
+    "end_reason": None,
+    "customer_approvals": 0,
+    "customer_waits": 0,
+    "agent_upload_requests": 0,
+    "tool_errors": 0,
+}
 
 
 def request_chat_completion(messages: list[dict], tool_schemas: list[dict]) -> dict:
@@ -97,10 +106,14 @@ def customer_reply(environment, agent_text: str) -> str | None:
     ]
     for request in open_requests:
         call_user_tool(environment, "decide_request", request_id=request["id"], decision="APPROVE")
+    conversation_stats["customer_approvals"] += len(open_requests)
+    # Uploads are not scripted, so every request for one goes unanswered.
+    conversation_stats["agent_upload_requests"] += bool(AGENT_ASKS_FOR_UPLOAD.search(agent_text))
     if open_requests:
         return CUSTOMER_APPROVAL_MESSAGE
     if AGENT_ASKS_TO_WAIT.search(agent_text):
         call_user_tool(environment, "wait_for_update")
+        conversation_stats["customer_waits"] += 1
         return CUSTOMER_WAIT_MESSAGE
     return None
 
@@ -131,13 +144,21 @@ def run_agent_conversation(environment, customer_message: str, tool_schemas: lis
                     ).content
                 except json.JSONDecodeError:
                     result = json.dumps({"ok": False, "error": "Tool arguments were not valid JSON"})
+                tool_failed = json.loads(result).get("ok") is False if result.startswith("{") else False
+                conversation_stats["tool_errors"] += tool_failed
                 messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": result})
             continue
         customer_turns += 1
         follow_up = customer_reply(environment, agent_message.get("content") or "")
-        if follow_up is None or customer_turns >= MAX_CUSTOMER_TURNS:
+        if follow_up is None:
+            conversation_stats["end_reason"] = "customer_had_nothing_to_do"
+            break
+        if customer_turns >= MAX_CUSTOMER_TURNS:
+            conversation_stats["end_reason"] = "customer_turn_cap"
             break
         messages.append({"role": "user", "content": follow_up})
+    else:
+        conversation_stats["end_reason"] = "model_call_cap"
     return messages
 
 
@@ -160,6 +181,7 @@ def run_case(case_input: dict) -> dict:
         "process_success": verification["process_success"],
         "protection_success": verification["protection_success"],
         "strict_success": verification["strict_success"],
+        "conversation_stats": conversation_stats,
         "conversation": conversation,
     }
 

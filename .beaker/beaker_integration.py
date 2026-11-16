@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -39,6 +40,7 @@ DEFAULT_AGENT_BASE_URL = "https://api.openai.com/v1"
 # Only the documents the agent reads; the simulated bank, contracts and verifier stay fixed.
 EDITABLE_SOURCE_PATHS = ("payment/data/knowledge",)
 
+logger = logging.getLogger(__name__)
 concurrent_case_limit = asyncio.Semaphore(CONCURRENT_CASE_LIMIT)
 
 
@@ -69,6 +71,12 @@ def agent_model_environment(runtime: RolloutRuntime) -> dict[str, str]:
         "AGENT_MODEL_ID": os.environ["AGENT_MODEL_ID"],
         **({"AGENT_API_KEY": os.environ["AGENT_API_KEY"]} if os.environ.get("AGENT_API_KEY") else {}),
     }
+
+
+def log_case_failure(case_input: dict, message: str) -> RuntimeError:
+    # Beaker only keeps case errors once a candidate exists; the log shows them for any run.
+    logger.error("case %s: %s", case_input.get("task_id"), message[:2000])
+    return RuntimeError(message)
 
 
 async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseResult:
@@ -110,16 +118,16 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
         filename="worker_stderr.txt",
     )
     if timed_out:
-        raise RuntimeError(f"Case timed out after {CASE_TIMEOUT_SECONDS}s {timings}")
+        raise log_case_failure(case_input, f"Case timed out after {CASE_TIMEOUT_SECONDS}s {timings}")
     if process.returncode:
         hint = " (SIGKILL: likely out of memory)" if process.returncode == -9 else ""
-        raise RuntimeError(
-            f"Case worker failed (returncode={process.returncode}{hint}): {error_text[-4000:]}\n{timings}"
+        raise log_case_failure(
+            case_input, f"Case worker failed (returncode={process.returncode}{hint}): {error_text[-4000:]}\n{timings}"
         )
     outcome = json.loads(stdout.decode().strip().splitlines()[-1])
     trace_outcome(runtime, outcome, timings)
     if "error" in outcome:
-        raise RuntimeError(f"Case failed: {outcome['error']}\n{timings}")
+        raise log_case_failure(case_input, f"Case failed: {outcome['error']}\n{timings}")
     return CaseResult(
         output={
             "timings": {**timings, **model_call_statistics(outcome["model_calls"])},

@@ -19,9 +19,10 @@ passed initially and fail afterwards.
 
 - Agent: set `AGENT_MODEL_ID` (required) and optionally `AGENT_BASE_URL` (default OpenAI) and
   `AGENT_API_KEY`. With a selected comparison model Beaker's gateway is used instead.
-- Customer: `scorer_model` in `beaker.yaml` (DeepSeek V4.1 Flash, as in the benchmark's
-  example config), called through Beaker's gateway. Locally set `USER_BASE_URL`,
-  `USER_API_KEY` and `USER_MODEL_ID` yourself.
+- Customer: DeepSeek V4.1 Flash on OpenRouter, the benchmark's default simulator. In a hosted run
+  Beaker's sandbox proxy sends the `openrouter.ai` calls to its gateway, as it does the agent's
+  OpenAI calls. Locally set `OPENROUTER_API_KEY` as `USER_API_KEY`, or point `USER_BASE_URL` and
+  `USER_MODEL_ID` elsewhere. A scorer-model credential is not available to rollouts, so it can't be used.
 
 ## Dataset
 

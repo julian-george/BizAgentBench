@@ -23,13 +23,20 @@ MAX_TOOL_ERRORS = 16
 AGENT_MAX_TOKENS = 262_144
 CUSTOMER_MAX_TOKENS = 393_216
 MODEL_REQUEST_TIMEOUT_SECONDS = 600
+# The benchmark's default customer simulator. In a hosted run Beaker's sandbox proxy sends
+# openrouter.ai calls to its gateway; OpenRouter may report the dated slug as the response model.
+CUSTOMER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+CUSTOMER_DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
+CUSTOMER_RESPONSE_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
 
-def role_config(role_prefix: str, max_tokens: int) -> dict:
+def role_config(
+    role_prefix: str, max_tokens: int, *, default_base_url: str | None = None, default_model: str | None = None
+) -> dict:
     return {
-        "base_url": os.environ[f"{role_prefix}_BASE_URL"],
+        "base_url": os.environ.get(f"{role_prefix}_BASE_URL", default_base_url),
         "api_key_env": f"{role_prefix}_API_KEY",
-        "model": os.environ[f"{role_prefix}_MODEL_ID"],
+        "model": os.environ.get(f"{role_prefix}_MODEL_ID", default_model),
         "max_tokens": max_tokens,
         "timeout_seconds": MODEL_REQUEST_TIMEOUT_SECONDS,
         "trust_env": False,
@@ -78,7 +85,16 @@ def run_case(case_input: dict) -> dict:
         "max_errors": MAX_TOOL_ERRORS,
         "episode_timeout_seconds": EPISODE_TIMEOUT_SECONDS,
         "agent": {**role_config("AGENT", AGENT_MAX_TOKENS), "compact_api_ledger": False},
-        "user": {**role_config("USER", CUSTOMER_MAX_TOKENS), "compact_api_ledger": False},
+        "user": {
+            **role_config(
+                "USER",
+                CUSTOMER_MAX_TOKENS,
+                default_base_url=CUSTOMER_DEFAULT_BASE_URL,
+                default_model=CUSTOMER_DEFAULT_MODEL,
+            ),
+            "response_model": CUSTOMER_RESPONSE_MODEL,
+            "compact_api_ledger": False,
+        },
     }
     with tempfile.TemporaryDirectory() as output_directory:
         result = run_benchmark_case(case_input["task_id"], config, Path(output_directory))

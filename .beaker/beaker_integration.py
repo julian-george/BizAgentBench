@@ -27,7 +27,6 @@ from beaker import (
     SetupRuntime,
     inference_target,
     repository,
-    scoring_inference_target,
 )
 from pydantic import BaseModel
 
@@ -72,14 +71,6 @@ def agent_model_environment(runtime: RolloutRuntime) -> dict[str, str]:
     }
 
 
-def customer_model_environment() -> dict[str, str]:
-    """Route the LLM customer through Beaker's gateway as the integration's scorer model."""
-    target = scoring_inference_target()
-    if target is None:
-        return {}
-    return {"USER_BASE_URL": target.base_url, "USER_API_KEY": target.api_key, "USER_MODEL_ID": target.model}
-
-
 async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseResult:
     if not isinstance(case_input, dict):
         raise ValueError("Expected a BizAgentBench case input object")
@@ -92,7 +83,7 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
             sys.executable,
             str(worker_path),
             json.dumps(case_input),
-            env={**os.environ, **agent_model_environment(runtime), **customer_model_environment()},
+            env={**os.environ, **agent_model_environment(runtime)},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

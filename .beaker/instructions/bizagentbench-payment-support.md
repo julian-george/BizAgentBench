@@ -1,2 +1,0 @@
-- Scored on the verifier checks each case must fix without breaking checks that already passed.
-- The score also has a `knowledge_size` field: 0 at the starting size of `payment/data/knowledge`, higher the smaller it gets. A 25% smaller knowledge base is worth 1% of task score, so consolidate duplicated and overlapping documents and trade a little accuracy for a much smaller knowledge base.

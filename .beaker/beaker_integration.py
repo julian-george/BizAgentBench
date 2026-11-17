@@ -39,11 +39,6 @@ MAX_STDERR_ARTIFACT_CHARS = 20_000
 DEFAULT_AGENT_BASE_URL = "https://api.openai.com/v1"
 # Only the documents the agent reads; the simulated bank, contracts and verifier stay fixed.
 EDITABLE_SOURCE_PATHS = ("payment/data/knowledge",)
-KNOWLEDGE_DIRECTORY = Path(__file__).resolve().parent.parent / "payment/data/knowledge"
-# Bytes of the knowledge base at the seed (789 files); update it if the seed is edited by hand.
-SEED_KNOWLEDGE_BYTES = 3_496_517
-# knowledge_size weighs this much against the task score, so 25% smaller offsets a 1% task-score drop.
-KNOWLEDGE_SIZE_WEIGHT = 0.04
 
 logger = logging.getLogger(__name__)
 concurrent_case_limit = asyncio.Semaphore(CONCURRENT_CASE_LIMIT)
@@ -142,7 +137,6 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
             "process_success": outcome["process_success"],
             "protection_success": outcome["protection_success"],
             "strict_success": outcome["strict_success"],
-            "knowledge_bytes": knowledge_bytes(),
             "agent_tool_calls": [
                 call["name"]
                 for message in outcome["conversation"]
@@ -152,11 +146,6 @@ async def run_case(*, case_input: JsonValue, runtime: RolloutRuntime) -> CaseRes
         },
         output_kind="record",
     )
-
-
-def knowledge_bytes() -> int:
-    """The candidate's knowledge base size, from file metadata alone."""
-    return sum(path.stat().st_size for path in KNOWLEDGE_DIRECTORY.rglob("*") if path.is_file())
 
 
 def model_call_statistics(model_calls: list[dict]) -> dict:
@@ -228,22 +217,9 @@ async def score_case(*, case: Case, result: CaseResult, case_files_dir: Path) ->
         for check_id in regressed
     ]
     goal_progress = len(fixed) / len(failing_at_start)
-    task_score = max(0.0, (len(fixed) - len(regressed)) / len(failing_at_start))
-    knowledge_size = min(1.0, max(0.0, 1.0 - outcome["knowledge_bytes"] / SEED_KNOWLEDGE_BYTES))
-    checks.append(
-        Check(
-            name="knowledge_size",
-            verdict=knowledge_size,
-            predicted=outcome["knowledge_bytes"],
-            expected=SEED_KNOWLEDGE_BYTES,
-            message="Bytes of payment/data/knowledge against the seed; 0 at the seed's size, higher when smaller.",
-        )
-    )
     return CaseScore(
-        objective=(task_score + KNOWLEDGE_SIZE_WEIGHT * knowledge_size) / (1 + KNOWLEDGE_SIZE_WEIGHT),
+        objective=max(0.0, (len(fixed) - len(regressed)) / len(failing_at_start)),
         field_scores={
-            "task_score": task_score,
-            "knowledge_size": knowledge_size,
             "goal_progress": goal_progress,
             "kept_passing": 1 - len(regressed) / len(passing_at_start) if passing_at_start else 1.0,
             "process_success": float(outcome["process_success"]),

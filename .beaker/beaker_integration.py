@@ -177,8 +177,11 @@ def trace_outcome(runtime: RolloutRuntime, outcome: dict, timings: dict) -> None
                 span.attribute("wall_seconds", call["wall_seconds"])
                 span.output(call["output"])
                 usage = call["usage"]
+                # Without cached tokens Beaker prices every prompt token at the full input rate.
                 span.usage(
-                    input_tokens=usage.get("prompt_tokens"), output_tokens=usage.get("completion_tokens")
+                    input_tokens=usage.get("prompt_tokens"),
+                    output_tokens=usage.get("completion_tokens"),
+                    cached_input_tokens=(usage.get("prompt_tokens_details") or {}).get("cached_tokens"),
                 )
         tool_results = {
             message["id"]: message["content"] for message in conversation if message["role"] == "tool"

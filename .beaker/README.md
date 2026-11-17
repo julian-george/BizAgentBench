@@ -26,5 +26,5 @@ passed initially and fail afterwards.
 
 ## Dataset
 
-`uv run python .beaker/upload_dataset.py` uploads 38 train and 12 test cases. Only each
-row's `task_id` and expected checks are used.
+`uv run python .beaker/upload_dataset.py` uploads 48 of the 50 cases as
+`bizagentbench-single-turn-v2`: 24 train and 24 test. Only each row's `task_id` and expected checks are used.

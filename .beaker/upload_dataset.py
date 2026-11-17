@@ -6,7 +6,7 @@ from pathlib import Path
 
 from build_dataset import build_rows, write_splits
 
-DATASET_NAME = "bizagentbench-single-turn-v1"
+DATASET_NAME = "bizagentbench-single-turn-v2"
 AGENT_KEY = "bizagentbench-payment-support"
 
 rows = build_rows()
@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix="bizagentbench-single-turn-") as directo
             "beaker", "dataset", "upload", directory,
             "--name", DATASET_NAME,
             "--agent", AGENT_KEY,
-            "--total-count", str(len(rows)),
+            "--total-count", str(sum(split_counts.values())),
             *[argument for split, count in split_counts.items() for argument in ("--split", f"{split}={count}")],
             "--json",
         ],

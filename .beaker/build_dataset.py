@@ -24,6 +24,8 @@ DATA_DIRECTORY = REPOSITORY_ROOT / "payment/data"
 # A sentence shared by this many cases is simulator boilerplate, not a customer fact.
 MAX_CASES_SHARING_A_FACT = 2
 SPLIT_SEED = 42
+# A smaller set split evenly keeps each round short and the held-out score less noisy.
+CASE_COUNT = 48
 # Leading labels and directives addressed to the old LLM customer, not facts about the business.
 SIMULATOR_LABEL = re.compile(
     r"^(Your own (business )?facts[^:]*:|Your private facts are:|"
@@ -101,9 +103,9 @@ def build_rows() -> list[dict]:
 
 
 def write_splits(rows: list[dict], output_directory: Path) -> dict[str, int]:
-    shuffled = random.Random(SPLIT_SEED).sample(rows, len(rows))
-    test_count = len(shuffled) // 4
-    splits = {"train": shuffled[test_count:], "test": shuffled[:test_count]}
+    sampled = random.Random(SPLIT_SEED).sample(rows, CASE_COUNT)
+    test_count = len(sampled) // 2
+    splits = {"train": sampled[test_count:], "test": sampled[:test_count]}
     output_directory.mkdir(parents=True, exist_ok=True)
     for split_name, split_rows in splits.items():
         with (output_directory / f"{split_name}.jsonl").open("w") as split_file:

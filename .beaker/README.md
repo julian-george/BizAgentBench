@@ -15,6 +15,11 @@ Expected results come from running the verifier on each untouched world. A case 
 the share of its initially failing checks that pass afterwards, minus checks that
 passed initially and fail afterwards.
 
+The objective also rewards a smaller knowledge base: `knowledge_size` is 1 − its bytes over the seed's
+(`SEED_KNOWLEDGE_BYTES`, update it if the seed changes), weighted 0.04, so 25% smaller offsets a 1%
+task-score drop. Trigger with `--instructions-file .beaker/instructions/bizagentbench-payment-support.md`
+so the proposer knows.
+
 ## Models
 
 - Agent: set `AGENT_MODEL_ID` (required) and optionally `AGENT_BASE_URL` (default OpenAI) and
